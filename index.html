@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Daily Dashboard｜個人任務規劃板</title>
+<meta name="description" content="一頁式個人任務規劃板：左側展示、右側編輯，資料即時同步並儲存在瀏覽器。">
+<style>
+:root {
+  --serif: "Noto Serif TC", "Noto Serif CJK TC", "Source Han Serif TC", "Source Han Serif", "Songti TC", "STSong", "PMingLiU", "MingLiU", "SimSun", serif;
+
+  --text: #D8D3C8;          /* 一般文字：米白 */
+  --strong: #FFFFFF;        /* 重點文字：白 */
+
+  --left-bg: #514B49;       /* 左側主色：低飽和深咖啡 */
+  --left-card: #5A5350;
+  --left-line: rgba(216, 211, 200, .16);
+  --left-muted: #B3ACA0;
+
+  --right-bg: #4A5262;      /* 右側主色：低飽和深藍 */
+  --right-card: #525A6B;
+  --right-input: #3E4555;
+  --right-line: rgba(216, 211, 200, .18);
+  --right-muted: #AEB4C0;
+
+  --accent: #CDB88E;        /* 點綴：沙金 */
+  --accent-ink: #2F2B28;
+  --done: #A6C29B;          /* 完成：灰綠 */
+  --danger: #F2A79C;        /* 警示文字 */
+  --danger-line: #E0857A;   /* 警示邊框 */
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  --switch-h: 52px;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  background: var(--left-bg);
+  -webkit-font-smoothing: antialiased;
+}
+body.dragging { cursor: col-resize; user-select: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+.skip {
+  position: absolute; left: -9999px; top: 8px; z-index: 100;
+  background: var(--accent); color: var(--accent-ink); padding: 6px 12px; border-radius: 6px;
+}
+.skip:focus { left: 8px; }
+
+/* ---------- 版面骨架 ---------- */
+.app {
+  --left-width: 55%;
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+}
+.preview {
+  flex: 0 0 calc(var(--left-width) - 5px);
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--left-bg);
+  container: preview / inline-size;
+}
+.divider {
+  flex: 0 0 10px;
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+  background: linear-gradient(90deg, var(--left-bg) 0 50%, var(--right-bg) 50% 100%);
+  outline: none;
+}
+.divider::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: rgba(216, 211, 200, .14); transform: translateX(-50%);
+  transition: background .15s, width .15s;
+}
+.divider::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 4px; height: 44px; border-radius: 2px;
+  background: rgba(216, 211, 200, .38);
+  transform: translate(-50%, -50%);
+  transition: background .15s, height .15s;
+}
+.divider:hover::after, .divider:focus-visible::after, body.dragging .divider::after { background: var(--accent); height: 64px; }
+.divider:hover::before, .divider:focus-visible::before, body.dragging .divider::before { background: var(--accent); width: 2px; }
+
+.editor {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--right-bg);
+  container: editor / inline-size;
+}
+
+.mobile-switch { display: none; }
+
+/* ---------- 左側：展示 ---------- */
+.pv-inner { max-width: 780px; margin: 0 auto; padding: 36px 32px 56px; }
+.masthead { margin-bottom: 8px; }
+.eyebrow {
+  margin: 0; font-size: .78rem; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700;
+}
+.mast-date { margin: 4px 0 2px; font-size: 1.9rem; line-height: 1.3; color: var(--strong); font-weight: 700; }
+.mast-sub { margin: 0; color: var(--left-muted); font-size: .88rem; }
+
+.card {
+  margin-top: 22px;
+  padding: 22px 24px 24px;
+  background: var(--left-card);
+  border: 1px solid var(--left-line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 14px; }
+.card-title, .jump { white-space: nowrap; }
+.card-no { font-size: .8rem; letter-spacing: .12em; color: var(--accent); font-weight: 700; }
+.card-title { margin: 0; font-size: 1.22rem; font-weight: 700; color: var(--strong); }
+.card-meta { font-size: .82rem; color: var(--left-muted); }
+.jump {
+  margin-left: auto; border: 1px solid var(--left-line); background: transparent;
+  color: var(--left-muted); border-radius: 999px; padding: 1px 12px; font-size: .8rem; cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.jump:hover, .jump:focus-visible { color: var(--strong); border-color: var(--accent); outline: none; }
+
+.placeholder { color: var(--left-muted); font-weight: 400; opacity: .85; }
+
+/* 區域 A */
+.who { font-size: 1.7rem; line-height: 1.3; font-weight: 700; color: var(--strong); word-break: break-word; }
+.who-sub { font-size: .85rem; color: var(--left-muted); margin-top: 2px; }
+.label-sm { display: block; font-size: .85rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.diary-wrap { margin-top: 16px; }
+.diary {
+  margin: 0; padding: 12px 16px;
+  border-left: 3px solid var(--accent);
+  background: rgba(0, 0, 0, .10);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  white-space: pre-wrap; word-break: break-word;
+}
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.duo-item { padding: 12px 14px; border: 1px solid var(--left-line); border-radius: 10px; min-width: 0; }
+.duo-value { color: var(--strong); font-weight: 700; word-break: break-word; }
+
+/* 區域 B */
+.progress { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.progress-bar { flex: 1; height: 8px; border-radius: 999px; background: rgba(0, 0, 0, .2); overflow: hidden; }
+.progress-fill { display: block; height: 100%; width: 0; background: var(--done); border-radius: inherit; transition: width .35s ease; }
+.progress-text { font-size: .85rem; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.ttable { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ttable col.c-done { width: 56px; }
+.ttable col.c-title { width: 55%; }
+.ttable thead th {
+  text-align: left; font-size: .82rem; font-weight: 700; color: var(--left-muted);
+  padding: 6px 8px; border-bottom: 1px solid var(--left-line);
+}
+.ttable thead th:first-child { text-align: center; }
+.day-row th {
+  text-align: left; padding: 16px 8px 6px; font-weight: 700; color: var(--strong);
+  font-size: 1rem; border-bottom: 1px solid var(--left-line);
+}
+.day-count { font-weight: 400; font-size: .8rem; color: var(--left-muted); margin-left: 8px; }
+.today {
+  display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-ink); font-size: .72rem; font-weight: 700;
+  line-height: 1.6; vertical-align: 2px;
+}
+.task-row td { padding: 9px 8px; border-bottom: 1px solid var(--left-line); vertical-align: top; word-break: break-word; }
+.task-row td:first-child { text-align: center; }
+.task-row .t-title { color: var(--strong); font-weight: 700; }
+.task-row { transition: opacity .2s ease; }
+.task-row.done { opacity: .55; }
+.task-row.done.just { animation: fadeDone .25s ease-out; }
+@keyframes fadeDone { from { opacity: 1; } to { opacity: .55; } }
+
+.box {
+  display: inline-block; width: 18px; height: 18px; margin-top: 4px;
+  border: 1.5px solid var(--text); border-radius: 4px; position: relative;
+  transition: background .2s, border-color .2s;
+}
+.done .box { background: var(--done); border-color: var(--done); }
+.done .box::after {
+  content: ""; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px;
+  border: solid var(--accent-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.done .strike {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat; background-position: 0 60%; background-size: 100% 1px;
+}
+.done.just .strike { animation: strike .25s ease-out; }
+@keyframes strike { from { background-size: 0 1px; } to { background-size: 100% 1px; } }
+
+.roll-tag {
+  display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px;
+  border: 1px solid var(--accent); color: var(--accent); font-size: .72rem; font-weight: 400;
+  line-height: 1.6; white-space: nowrap; vertical-align: 1px;
+}
+.empty-row td { padding: 10px 8px; color: var(--left-muted); font-size: .9rem; border-bottom: 1px solid var(--left-line); }
+
+/* 區域 C */
+.chips { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.chip {
+  display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 10px 14px;
+  border-radius: 12px; border: 1px solid var(--left-line); background: rgba(0, 0, 0, .08);
+  color: inherit; text-decoration: none;
+  transition: transform .15s ease, background .15s, border-color .15s;
+}
+a.chip:hover, a.chip:focus-visible { transform: translateY(-2px); border-color: var(--accent); background: rgba(0, 0, 0, .15); outline: none; }
+.chip-dot {
+  flex: 0 0 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; font-weight: 700; font-size: .95rem;
+}
+.chip-text { min-width: 0; display: flex; flex-direction: column; line-height: 1.4; }
+.chip-title { font-weight: 700; color: var(--strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip-host { font-size: .78rem; color: var(--left-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip.incomplete { opacity: .6; }
+.chip.incomplete .chip-dot { background: #857E79; }
+.chip.empty {
+  justify-content: center; background: transparent; color: var(--left-muted);
+  border: 1.5px dashed rgba(216, 211, 200, .3); font-size: .88rem;
+}
+.chip.pop { animation: pop .28s ease-out; }
+@keyframes pop { from { transform: scale(.92); opacity: .4; } to { transform: scale(1); opacity: 1; } }
+
+.pv-foot { margin-top: 28px; font-size: .8rem; color: var(--left-muted); text-align: center; }
+
+@container preview (max-width: 560px) {
+  .pv-inner { padding: 24px 16px 40px; }
+  .card { padding: 18px 16px 20px; }
+  .duo { grid-template-columns: 1fr; }
+  .chips { grid-template-columns: 1fr; }
+  .mast-date { font-size: 1.55rem; }
+  .ttable col.c-done { width: 44px; }
+  .card-meta { order: 3; flex-basis: 100%; }
+}
+
+/* ---------- 右側：編輯 ---------- */
+.ed-head {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--right-bg);
+  padding: 22px 28px 0;
+  border-bottom: 1px solid var(--right-line);
+}
+.ed-title-row { display: flex; align-items: baseline; gap: 12px; }
+.ed-title { margin: 0; font-size: 1.22rem; color: var(--strong); font-weight: 700; }
+.save-state { margin-left: auto; font-size: .8rem; color: var(--right-muted); transition: opacity .3s; }
+.save-state.ok { color: var(--done); }
+.save-state.err { color: var(--danger); }
+.tabs { display: flex; gap: 2px; margin-top: 10px; overflow-x: auto; }
+.tab {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  padding: 10px 16px; font-weight: 700; color: var(--right-muted);
+  border-bottom: 2px solid transparent; white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { color: var(--strong); border-bottom-color: var(--accent); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+
+.ed-body { padding: 22px 28px 64px; max-width: 720px; }
+.panel-intro { margin: 0 0 18px; font-size: .88rem; color: var(--right-muted); }
+.sub-title { margin: 26px 0 10px; font-size: 1.05rem; font-weight: 700; color: var(--strong); }
+.sub-title:first-child { margin-top: 0; }
+
+.field { margin-bottom: 18px; }
+.field-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; gap: 8px; }
+.field-head label { font-weight: 700; color: var(--strong); font-size: .96rem; }
+.counter { font-size: .8rem; color: var(--right-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.counter.at-limit { color: var(--danger); font-weight: 700; }
+
+input[type="text"], input[type="search"], textarea, select {
+  width: 100%;
+  background: var(--right-input);
+  border: 1px solid var(--right-line);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+textarea { resize: vertical; min-height: 120px; line-height: 1.7; }
+select { cursor: pointer; padding-right: 8px; }
+input::placeholder, textarea::placeholder { color: #8E95A3; }
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(205, 184, 142, .22);
+}
+.invalid, .invalid:focus-visible { border-color: var(--danger-line) !important; box-shadow: 0 0 0 3px rgba(224, 133, 122, .18) !important; }
+.hint { margin: 4px 0 0; font-size: .82rem; color: var(--danger); min-height: 0; }
+.hint:empty { display: none; }
+.note { margin: 4px 0 0; font-size: .82rem; color: var(--right-muted); word-break: break-all; }
+.note:empty { display: none; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 700;
+  background: transparent; border: 1px solid var(--right-line); color: var(--text);
+  transition: background .15s, border-color .15s, color .15s;
+}
+.btn:hover { border-color: var(--accent); color: var(--strong); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: #DCC9A2; color: var(--accent-ink); }
+.btn-danger { border-color: var(--danger-line); color: var(--danger); }
+.btn-danger:hover { background: rgba(224, 133, 122, .14); color: var(--danger); border-color: var(--danger-line); }
+.btn[data-armed] { background: var(--danger-line); border-color: var(--danger-line); color: #2B1F1D; }
+.btn-sm { padding: 4px 10px; font-size: .84rem; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.box-card {
+  background: var(--right-card); border: 1px solid var(--right-line);
+  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 8px;
+}
+
+/* 任務：新增 */
+.add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.add-grid .span-2 { grid-column: 1 / -1; }
+.add-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.ed-progress { font-size: .85rem; color: var(--right-muted); margin-left: auto; }
+
+/* 任務：清單 */
+.eday { margin-top: 18px; }
+.eday-head {
+  display: flex; align-items: center; gap: 4px; margin: 0 0 8px; padding-bottom: 6px;
+  font-size: 1rem; font-weight: 700; color: var(--strong); border-bottom: 1px solid var(--right-line);
+}
+.eday-count { margin-left: auto; font-weight: 400; font-size: .8rem; color: var(--right-muted); font-variant-numeric: tabular-nums; }
+.eday-count.full { color: var(--accent); }
+.eday-empty { margin: 4px 0 0; font-size: .88rem; color: var(--right-muted); }
+.trow {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1.2fr) minmax(0, 1fr) 118px auto;
+  grid-template-areas: "c t n d x" ". m m m m";
+  gap: 6px 8px; align-items: center; padding: 6px 0;
+}
+.trow + .trow { border-top: 1px dashed rgba(216, 211, 200, .1); }
+.trow .c { grid-area: c; }
+.trow .t { grid-area: t; }
+.trow .n { grid-area: n; }
+.trow .d { grid-area: d; }
+.trow .x { grid-area: x; }
+.trow .m { grid-area: m; display: flex; gap: 10px; flex-wrap: wrap; font-size: .8rem; }
+.trow .m:empty { display: none; }
+.trow input[type="text"], .trow select { padding: 6px 10px; }
+.trow.is-done .t, .trow.is-done .n { text-decoration: line-through; opacity: .6; }
+.trow.flash { animation: flash 1s ease-out; }
+@keyframes flash { from { background: rgba(205, 184, 142, .22); } to { background: transparent; } }
+.roll-note { color: var(--accent); }
+.row-err { color: var(--danger); }
+
+.chk {
+  appearance: none; -webkit-appearance: none; margin: 0; cursor: pointer;
+  width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--text);
+  position: relative; background: transparent; transition: background .15s, border-color .15s;
+}
+.chk:checked { background: var(--done); border-color: var(--done); }
+.chk:checked::after {
+  content: ""; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px;
+  border: solid var(--accent-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.chk:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 目錄 */
+.lrow {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1.6fr) auto;
+  grid-template-areas: "i t u x" ". m m m";
+  gap: 6px 8px; align-items: center; padding: 8px 0;
+  border-bottom: 1px dashed rgba(216, 211, 200, .1);
+}
+.lrow .i { grid-area: i; font-size: .85rem; color: var(--right-muted); text-align: right; font-variant-numeric: tabular-nums; }
+.lrow .t { grid-area: t; }
+.lrow .u { grid-area: u; }
+.lrow .x { grid-area: x; }
+.lrow .m { grid-area: m; }
+.lrow .m:empty { display: none; }
+.lrow input[type="text"] { padding: 7px 10px; }
+
+@container editor (max-width: 580px) {
+  .ed-head { padding: 16px 16px 0; }
+  .ed-body { padding: 18px 16px 56px; }
+  .add-grid { grid-template-columns: 1fr; }
+  .trow {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    grid-template-areas: "c t t" ". n n" ". d x" ". m m";
+  }
+  .lrow {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    grid-template-areas: "i t x" ". u u" ". m m";
+  }
+}
+
+/* 備份 */
+.backup-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.import-preview { margin-top: 12px; }
+.import-preview p { margin: 0 0 10px; }
+.info-list { margin: 8px 0 0; padding-left: 1.2em; font-size: .88rem; color: var(--right-muted); }
+
+/* 通知 */
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  z-index: 50; display: flex; align-items: center; gap: 14px;
+  max-width: calc(100vw - 32px); padding: 10px 14px 10px 18px;
+  background: #2E333E; color: var(--text); border: 1px solid var(--right-line);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  animation: toastIn .2s ease-out; font-size: .9rem;
+}
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ---------- 手機版 ---------- */
+@media (max-width: 899px) {
+  .app { display: block; height: auto; }
+  .divider { display: none; }
+  .preview, .editor { overflow: visible; min-height: calc(100vh - var(--switch-h)); min-height: calc(100dvh - var(--switch-h)); }
+  .mobile-switch {
+    display: flex; position: sticky; top: 0; z-index: 20; height: var(--switch-h);
+    padding: 8px 16px; gap: 6px; background: #3F3A38; border-bottom: 1px solid var(--left-line);
+  }
+  body[data-view="edit"] .mobile-switch { background: #3C4352; }
+  .mobile-switch button {
+    flex: 1; border: 1px solid var(--left-line); background: transparent; border-radius: 8px;
+    color: var(--left-muted); font-weight: 700; cursor: pointer;
+  }
+  .mobile-switch button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  body[data-view="preview"] .editor { display: none; }
+  body[data-view="edit"] .preview { display: none; }
+  body[data-view="edit"] { background: var(--right-bg); }
+  .ed-head { top: var(--switch-h); }
+  .chips { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body data-view="preview">
+<a class="skip" href="#editor">跳到編輯面板</a>
+
+<nav class="mobile-switch" aria-label="切換檢視">
+  <button type="button" data-view-btn="preview" aria-pressed="true">預覽</button>
+  <button type="button" data-view-btn="edit" aria-pressed="false">編輯</button>
+</nav>
+
+<div class="app" id="app">
+  <!-- 左：視覺化預覽（只展示） -->
+  <main class="preview" id="preview" aria-label="視覺化預覽">
+    <div class="pv-inner">
+      <header class="masthead">
+        <p class="eyebrow">My Daily Dashboard</p>
+        <h1 class="mast-date" id="pv-date"></h1>
+        <p class="mast-sub">左側為展示頁，內容請在右側編輯面板修改。</p>
+      </header>
+
+      <section class="card" aria-labelledby="h-status">
+        <div class="card-head">
+          <span class="card-no">01</span>
+          <h2 class="card-title" id="h-status">當日狀態</h2>
+          <button type="button" class="jump" data-jump="profile">編輯</button>
+        </div>
+        <div id="pv-status"></div>
+      </section>
+
+      <section class="card" aria-labelledby="h-tasks">
+        <div class="card-head">
+          <span class="card-no">02</span>
+          <h2 class="card-title" id="h-tasks">一週任務</h2>
+          <span class="card-meta" id="pv-range"></span>
+          <button type="button" class="jump" data-jump="tasks">編輯</button>
+        </div>
+        <div class="progress">
+          <div class="progress-bar" id="pv-bar" role="progressbar" aria-label="本週完成率" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <span class="progress-fill" id="pv-bar-fill"></span>
+          </div>
+          <span class="progress-text" id="pv-progress"></span>
+        </div>
+        <table class="ttable">
+          <colgroup><col class="c-done"><col class="c-title"><col></colgroup>
+          <thead><tr><th scope="col">完成</th><th scope="col">任務名稱</th><th scope="col">備註</th></tr></thead>
+          <tbody id="pv-tasks"></tbody>
+        </table>
+      </section>
+
+      <section class="card" aria-labelledby="h-links">
+        <div class="card-head">
+          <span class="card-no">03</span>
+          <h2 class="card-title" id="h-links">資訊目錄</h2>
+          <span class="card-meta" id="pv-links-meta"></span>
+          <button type="button" class="jump" data-jump="links">編輯</button>
+        </div>
+        <ul class="chips" id="pv-links"></ul>
+      </section>
+
+      <p class="pv-foot">資料儲存在這個瀏覽器中，可於「備份」分頁匯出 JSON。</p>
+    </div>
+  </main>
+
+  <div class="divider" id="divider" role="separator" tabindex="0"
+       aria-orientation="vertical" aria-controls="preview" aria-label="左右比例分隔線，可用方向鍵調整"
+       aria-valuemin="30" aria-valuemax="75" aria-valuenow="55"
+       title="拖曳調整左右比例，雙擊還原"></div>
+
+  <!-- 右：編輯面板 -->
+  <aside class="editor" id="editor" aria-label="編輯面板">
+    <div class="ed-head">
+      <div class="ed-title-row">
+        <h2 class="ed-title">編輯面板</h2>
+        <span class="save-state" id="save-state" role="status" aria-live="polite"></span>
+      </div>
+      <div class="tabs" role="tablist" aria-label="編輯分類">
+        <button type="button" class="tab" role="tab" id="tab-profile" data-tab="profile" aria-controls="panel-profile">狀態</button>
+        <button type="button" class="tab" role="tab" id="tab-tasks" data-tab="tasks" aria-controls="panel-tasks">任務</button>
+        <button type="button" class="tab" role="tab" id="tab-links" data-tab="links" aria-controls="panel-links">目錄</button>
+        <button type="button" class="tab" role="tab" id="tab-backup" data-tab="backup" aria-controls="panel-backup">備份</button>
+      </div>
+    </div>
+
+    <div class="ed-body">
+      <!-- 狀態 -->
+      <section role="tabpanel" id="panel-profile" aria-labelledby="tab-profile" tabindex="0">
+        <p class="panel-intro">輸入的內容會即時顯示在左側「當日狀態」。</p>
+        <div class="field">
+          <div class="field-head"><label for="f-name">名字</label><span class="counter" id="c-name"></span></div>
+          <input id="f-name" type="text" data-profile="name" placeholder="你的名字" autocomplete="off" aria-describedby="c-name h-name">
+          <p class="hint" id="h-name"></p>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="f-diary">短日記</label><span class="counter" id="c-diary"></span></div>
+          <textarea id="f-diary" data-profile="diary" rows="5" placeholder="今天發生了什麼？" aria-describedby="c-diary h-diary"></textarea>
+          <p class="hint" id="h-diary"></p>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="f-thanks">感謝的人</label><span class="counter" id="c-thanks"></span></div>
+          <input id="f-thanks" type="text" data-profile="thanks" placeholder="今天想謝謝誰？" autocomplete="off" aria-describedby="c-thanks h-thanks">
+          <p class="hint" id="h-thanks"></p>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="f-future">對未來的一句話</label><span class="counter" id="c-future"></span></div>
+          <input id="f-future" type="text" data-profile="future" placeholder="寫給明天（或十年後）的自己" autocomplete="off" aria-describedby="c-future h-future">
+          <p class="hint" id="h-future"></p>
+        </div>
+      </section>
+
+      <!-- 任務 -->
+      <section role="tabpanel" id="panel-tasks" aria-labelledby="tab-tasks" tabindex="0" hidden>
+        <h3 class="sub-title">新增任務</h3>
+        <div class="box-card">
+          <div class="add-grid">
+            <div class="field span-2" style="margin:0">
+              <div class="field-head"><label for="add-date">日期</label></div>
+              <select id="add-date"></select>
+            </div>
+            <div class="field" style="margin:0">
+              <div class="field-head"><label for="add-title">任務名稱</label><span class="counter" id="c-add-title"></span></div>
+              <input id="add-title" type="text" placeholder="例如：完成作業初版" autocomplete="off" aria-describedby="c-add-title add-hint">
+            </div>
+            <div class="field" style="margin:0">
+              <div class="field-head"><label for="add-note">備註（選填）</label><span class="counter" id="c-add-note"></span></div>
+              <input id="add-note" type="text" placeholder="例如：先求能動" autocomplete="off" aria-describedby="c-add-note">
+            </div>
+          </div>
+          <div class="add-actions">
+            <button type="button" class="btn btn-primary" id="add-btn">新增任務</button>
+            <span class="ed-progress" id="ed-progress"></span>
+          </div>
+          <p class="hint" id="add-hint" role="alert"></p>
+        </div>
+
+        <h3 class="sub-title">本週清單</h3>
+        <p class="panel-intro" style="margin-bottom:4px">勾選即標記完成；可直接修改名稱、備註或移到其他日期。每天最多 6 項。</p>
+        <div id="ed-tasks"></div>
+      </section>
+
+      <!-- 目錄 -->
+      <section role="tabpanel" id="panel-links" aria-labelledby="tab-links" tabindex="0" hidden>
+        <p class="panel-intro">共 10 個槽位。網址可省略 https://，系統會自動補上；只接受 http 與 https 連結。</p>
+        <div id="ed-links"></div>
+      </section>
+
+      <!-- 備份 -->
+      <section role="tabpanel" id="panel-backup" aria-labelledby="tab-backup" tabindex="0" hidden>
+        <h3 class="sub-title">匯出備份</h3>
+        <div class="box-card">
+          <p style="margin:0">把目前所有內容（狀態、任務、目錄）下載成一個 JSON 檔。</p>
+          <div class="backup-row"><button type="button" class="btn btn-primary" id="export-btn">匯出 JSON</button></div>
+        </div>
+
+        <h3 class="sub-title">匯入備份</h3>
+        <div class="box-card">
+          <p style="margin:0">選擇先前匯出的 JSON 檔，確認後會覆蓋目前內容。</p>
+          <div class="backup-row">
+            <button type="button" class="btn" id="import-btn">選擇檔案</button>
+            <input type="file" id="import-file" accept="application/json,.json" hidden>
+          </div>
+          <p class="hint" id="import-hint" role="alert"></p>
+          <div class="import-preview" id="import-preview" hidden>
+            <p id="import-summary"></p>
+            <div class="backup-row">
+              <button type="button" class="btn btn-primary" id="import-confirm">確認匯入</button>
+              <button type="button" class="btn" id="import-cancel">取消</button>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="sub-title">重設</h3>
+        <div class="box-card">
+          <p style="margin:0">按一次後按鈕會變色，4 秒內再按一次才會執行。</p>
+          <div class="backup-row">
+            <button type="button" class="btn btn-danger" id="reset-empty">清空全部資料</button>
+            <button type="button" class="btn" id="reset-sample">載入範例資料</button>
+          </div>
+        </div>
+
+        <h3 class="sub-title">關於儲存</h3>
+        <ul class="info-list">
+          <li>每次修改都會自動存到這個瀏覽器的 localStorage。</li>
+          <li>不同瀏覽器、不同裝置或無痕視窗之間不會共用資料，換電腦前請先匯出。</li>
+          <li id="storage-status"></li>
+        </ul>
+      </section>
+    </div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden>
+  <span id="toast-msg"></span>
+  <button type="button" class="btn btn-sm" id="toast-action" hidden></button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ================= 常數 ================= */
+  const STORAGE_KEY = 'dailyDashboard.v1';
+  const UI_KEY = 'dailyDashboard.ui.v1';
+  const LIMITS = {
+    name: 20, diary: 200, thanks: 30, future: 60,
+    taskTitle: 40, taskNote: 60, perDay: 6,
+    linkTitle: 20, linkUrl: 300, links: 10, days: 7
+  };
+  const WEEK = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+  const DOT_COLORS = ['#B98A6E', '#A9A26C', '#7FA48B', '#6F98A8', '#8C86B4', '#B07F96', '#BF9A5E', '#7A9A7E', '#8D97AD', '#B3796A'];
+
+  /* ================= 小工具 ================= */
+  const $ = (s, root = document) => root.querySelector(s);
+  const $$ = (s, root = document) => Array.from(root.querySelectorAll(s));
+  const PROP_KEYS = new Set(['value', 'checked', 'disabled']);
+
+  // 安全建立元素：所有使用者內容一律走 textContent / 文字節點，不使用 innerHTML
+  function h(tag, props, ...kids) {
+    const el = document.createElement(tag);
+    if (props) {
+      for (const [k, v] of Object.entries(props)) {
+        if (v === null || v === undefined || v === false) continue;
+        if (k === 'class') el.className = v;
+        else if (k === 'text') el.textContent = v;
+        else if (k === 'dataset') Object.assign(el.dataset, v);
+        else if (k === 'style') el.style.cssText = v;
+        else if (PROP_KEYS.has(k)) el[k] = v;
+        else el.setAttribute(k, v === true ? '' : String(v));
+      }
+    }
+    for (const c of kids.flat(Infinity)) {
+      if (c === null || c === undefined || c === false) continue;
+      el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    }
+    return el;
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  const toKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; // 本地時區，不用 toISOString
+  const fromKey = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+  const todayKey = () => toKey(new Date());
+  function weekKeys() {
+    const base = new Date(); base.setHours(0, 0, 0, 0);
+    return Array.from({ length: LIMITS.days }, (_, i) => {
+      const d = new Date(base); d.setDate(base.getDate() + i); return toKey(d);
+    });
+  }
+  function addDays(k, n) { const d = fromKey(k); d.setDate(d.getDate() + n); return toKey(d); }
+  const fmtShort = k => { const d = fromKey(k); return `${d.getMonth() + 1}/${d.getDate()} ${WEEK[d.getDay()]}`; };
+  const fmtLong = k => { const d = fromKey(k); return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日 ${WEEK[d.getDay()]}`; };
+  const uid = () => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const isDateKey = v => typeof v === 'string' && DATE_RE.test(v) && toKey(fromKey(v)) === v;
+  const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+
+  /* ================= 資料模型 ================= */
+  function emptyState() {
+    return {
+      version: 1,
+      profile: { name: '', diary: '', thanks: '', future: '' },
+      tasks: [],
+      links: Array.from({ length: LIMITS.links }, () => ({ title: '', url: '' }))
+    };
+  }
+
+  function sampleState() {
+    const w = weekKeys();
+    const s = emptyState();
+    s.profile = {
+      name: '小清',
+      diary: '早上把網頁程式設計的作業規格整理完，下午在圖書館畫版面草稿。\n晚上和室友去吃了宵夜，聊到很晚。',
+      thanks: '借我筆記的室友',
+      future: '慢慢來，比較快。'
+    };
+    const t = (date, title, note, done = false, origDate) => {
+      const o = { id: uid(), date, done, title, note };
+      if (origDate) o.origDate = origDate;
+      return o;
+    };
+    s.tasks = [
+      t(w[0], '整理作業規格書', '對照評分標準逐項檢查', true),
+      t(w[0], '完成 index.html 初版', '先確認三個區塊能互通'),
+      t(w[0], '回覆專題組員訊息', '確認下週報告分工', false, addDays(w[0], -1)),
+      t(w[1], '部署到 GitHub Pages', 'Settings > Pages 選 main 分支'),
+      t(w[2], '截圖並撰寫繳交說明', '附上 AI 迭代過程'),
+      t(w[3], '讀線性代數第 4 章', '習題 4.1 至 4.3'),
+      t(w[5], '社團期中聚餐', '晚上七點，記得帶零錢')
+    ];
+    const L = [
+      ['國立清華大學', 'https://www.nthu.edu.tw'],
+      ['中央氣象署', 'https://www.cwa.gov.tw'],
+      ['公視新聞網', 'https://news.pts.org.tw'],
+      ['MDN 文件', 'https://developer.mozilla.org'],
+      ['GitHub', 'https://github.com'],
+      ['Google 行事曆', 'calendar.google.com']
+    ];
+    L.forEach(([title, url], i) => { s.links[i] = { title, url }; });
+    return s;
+  }
+
+  // 匯入 / 讀檔時的清洗：型別檢查、截斷長度、補 id
+  function sanitize(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('最外層必須是物件');
+    const src = raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data) ? raw.data : raw;
+    if (!('profile' in src) && !('tasks' in src) && !('links' in src)) {
+      throw new Error('找不到 profile、tasks 或 links 欄位');
+    }
+    const s = emptyState();
+    const p = src.profile && typeof src.profile === 'object' ? src.profile : {};
+    s.profile = {
+      name: str(p.name, LIMITS.name),
+      diary: str(p.diary, LIMITS.diary),
+      thanks: str(p.thanks, LIMITS.thanks),
+      future: str(p.future, LIMITS.future)
+    };
+    const seen = new Set();
+    const tasks = Array.isArray(src.tasks) ? src.tasks : [];
+    s.tasks = tasks
+      .filter(t => t && typeof t === 'object' && isDateKey(t.date))
+      .slice(0, 300)
+      .map(t => {
+        let id = typeof t.id === 'string' && t.id && t.id.length <= 40 && !seen.has(t.id) ? t.id : uid();
+        while (seen.has(id)) id = uid();
+        seen.add(id);
+        const o = { id, date: t.date, done: t.done === true, title: str(t.title, LIMITS.taskTitle), note: str(t.note, LIMITS.taskNote) };
+        if (isDateKey(t.origDate)) o.origDate = t.origDate;
+        return o;
+      });
+    const links = Array.isArray(src.links) ? src.links : [];
+    s.links = Array.from({ length: LIMITS.links }, (_, i) => {
+      const l = links[i];
+      return l && typeof l === 'object'
+        ? { title: str(l.title, LIMITS.linkTitle), url: str(l.url, LIMITS.linkUrl) }
+        : { title: '', url: '' };
+    });
+    return s;
+  }
+
+  // 規則：過期且未完成 -> 內容不變，日期移到今天並記下原日期；過期且已完成 -> 移除
+  function rollover(s) {
+    const today = todayKey();
+    let moved = 0, cleared = 0;
+    s.tasks = s.tasks.filter(t => {
+      if (t.date < today) {
+        if (t.done) { cleared++; return false; }
+        if (!t.origDate) t.origDate = t.date;
+        t.date = today;
+        moved++;
+      }
+      return true;
+    });
+    return { moved, cleared };
+  }
+
+  // 連結檢查：回傳 empty / incomplete / ok
+  function analyzeLink(l) {
+    const title = l.title.trim();
+    const raw = l.url.trim();
+    if (!title && !raw) return { status: 'empty' };
+    if (!raw) return { status: 'incomplete', reason: '尚未填寫網址' };
+    if (/\s/.test(raw)) return { status: 'incomplete', reason: '網址不能包含空白' };
+
+    let candidate, prefixed = false;
+    if (/^https?:\/\//i.test(raw)) candidate = raw;
+    else if (raw.startsWith('//')) { candidate = 'https:' + raw; prefixed = true; }
+    else if (/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(raw)) return { status: 'incomplete', reason: '只接受 http 或 https 網址' };
+    else { candidate = 'https://' + raw; prefixed = true; }
+
+    let u;
+    try { u = new URL(candidate); } catch { return { status: 'incomplete', reason: '網址格式錯誤' }; }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return { status: 'incomplete', reason: '只接受 http 或 https 網址' };
+    const host = u.hostname;
+    if (!(host === 'localhost' || host.includes('.') || host.startsWith('['))) {
+      return { status: 'incomplete', reason: '網址格式錯誤（缺少網域）' };
+    }
+    const shortHost = host.replace(/^www\./, '');
+    return { status: 'ok', href: u.href, host: shortHost, label: title || shortHost, untitled: !title, prefixed };
+  }
+
+  /* ================= 狀態與儲存 ================= */
+  let state;
+  let storageOK = true;
+  let saveTimer = null;
+  let ui = { left: 55, tab: 'profile', view: 'preview' };
+
+  function loadState() {
+    let raw;
+    try { raw = localStorage.getItem(STORAGE_KEY); }
+    catch { storageOK = false; return { state: sampleState(), notice: '瀏覽器封鎖了本機儲存，本次修改不會被保存。' }; }
+    if (raw === null) return { state: sampleState(), fresh: true };
+    try { return { state: sanitize(JSON.parse(raw)) }; }
+    catch {
+      try { localStorage.setItem(STORAGE_KEY + '.corrupt', raw); } catch { /* 忽略 */ }
+      return { state: sampleState(), fresh: true, notice: '先前的資料無法讀取，已改用範例資料（原資料另存為備份鍵值）。' };
+    }
+  }
+
+  function loadUI() {
+    try {
+      const u = JSON.parse(localStorage.getItem(UI_KEY) || '{}');
+      if (typeof u.left === 'number' && u.left >= 30 && u.left <= 75) ui.left = u.left;
+      if (['profile', 'tasks', 'links', 'backup'].includes(u.tab)) ui.tab = u.tab;
+      if (['preview', 'edit'].includes(u.view)) ui.view = u.view;
+    } catch { /* 忽略 */ }
+  }
+  function saveUI() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* 忽略 */ } }
+
+  const saveEl = $('#save-state');
+  let saveFadeTimer = null;
+  function setSaveState(kind) {
+    clearTimeout(saveFadeTimer);
+    saveEl.className = 'save-state';
+    saveEl.style.opacity = 1;
+    if (kind === 'saving') saveEl.textContent = '儲存中';
+    else if (kind === 'saved') {
+      saveEl.textContent = '已儲存';
+      saveEl.classList.add('ok');
+      saveFadeTimer = setTimeout(() => { saveEl.style.opacity = .55; }, 1600);
+    } else if (kind === 'error') {
+      saveEl.textContent = '無法儲存，資料只保留到關閉頁面';
+      saveEl.classList.add('err');
+    }
+  }
+
+  function scheduleSave() {
+    if (!storageOK) { setSaveState('error'); return; }
+    setSaveState('saving');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 250);
+  }
+  function saveNow() {
+    clearTimeout(saveTimer); saveTimer = null;
+    if (!storageOK) { setSaveState('error'); return; }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      setSaveState('saved');
+    } catch {
+      storageOK = false;
+      setSaveState('error');
+      updateStorageStatus();
+    }
+  }
+  function updateStorageStatus() {
+    $('#storage-status').textContent = storageOK
+      ? '目前狀態：可正常儲存。'
+      : '目前狀態：瀏覽器不允許儲存（可能是隱私模式），關閉頁面後修改會消失，請記得匯出。';
+  }
+
+  /* ================= 通知 ================= */
+  const toastEl = $('#toast'), toastMsg = $('#toast-msg'), toastBtn = $('#toast-action');
+  let toastTimer = null, toastFn = null;
+  function toast(msg, action) {
+    clearTimeout(toastTimer);
+    toastMsg.textContent = msg;
+    toastFn = action ? action.fn : null;
+    toastBtn.hidden = !action;
+    if (action) toastBtn.textContent = action.label;
+    toastEl.hidden = true; void toastEl.offsetWidth; toastEl.hidden = false; // 重新觸發進場動畫
+    toastTimer = setTimeout(() => { toastEl.hidden = true; toastFn = null; }, action ? 6000 : 3500);
+  }
+  toastBtn.addEventListener('click', () => {
+    const fn = toastFn; toastEl.hidden = true; toastFn = null; clearTimeout(toastTimer);
+    if (fn) fn();
+  });
+
+  /* ================= 左側：展示 ================= */
+  const textOr = (v, ph) => (v.trim() ? document.createTextNode(v) : h('span', { class: 'placeholder', text: ph }));
+
+  function renderStatus() {
+    const p = state.profile;
+    $('#pv-status').replaceChildren(
+      h('div', { class: 'who' }, textOr(p.name, '你的名字')),
+      h('div', { class: 'who-sub', text: '今天的紀錄' }),
+      h('div', { class: 'diary-wrap' },
+        h('span', { class: 'label-sm', text: '短日記' }),
+        h('p', { class: 'diary' }, textOr(p.diary, '今天發生了什麼？'))
+      ),
+      h('div', { class: 'duo' },
+        h('div', { class: 'duo-item' },
+          h('span', { class: 'label-sm', text: '感謝的人' }),
+          h('div', { class: 'duo-value' }, textOr(p.thanks, '今天想謝謝誰？'))
+        ),
+        h('div', { class: 'duo-item' },
+          h('span', { class: 'label-sm', text: '對未來的一句話' }),
+          h('div', { class: 'duo-value' }, p.future.trim()
+            ? document.createTextNode(`「${p.future}」`)
+            : h('span', { class: 'placeholder', text: '寫給明天（或十年後）的自己' }))
+        )
+      )
+    );
+  }
+
+  function weekStats(keys) {
+    const inRange = state.tasks.filter(t => t.date >= keys[0] && t.date <= keys[keys.length - 1]);
+    const done = inRange.filter(t => t.done).length;
+    const total = inRange.length;
+    return { done, total, pct: total ? Math.round(done / total * 100) : 0 };
+  }
+
+  function renderTasksPreview(justDoneId) {
+    const keys = weekKeys();
+    const today = keys[0];
+    const { done, total, pct } = weekStats(keys);
+
+    $('#pv-range').textContent = `${fmtShort(keys[0])} 至 ${fmtShort(keys[6])}`;
+    $('#pv-bar-fill').style.width = pct + '%';
+    $('#pv-bar').setAttribute('aria-valuenow', pct);
+    const progressText = total ? `完成 ${done} / ${total}（${pct}%）` : '本週還沒有任務';
+    $('#pv-progress').textContent = progressText;
+    $('#ed-progress').textContent = total ? `本週${progressText}` : '本週還沒有任務';
+
+    const rows = [];
+    for (const k of keys) {
+      const list = state.tasks.filter(t => t.date === k);
+      rows.push(h('tr', { class: 'day-row' },
+        h('th', { colspan: 3, scope: 'colgroup' },
+          fmtShort(k),
+          k === today ? h('span', { class: 'today', text: '今天' }) : null,
+          list.length ? h('span', { class: 'day-count', text: `${list.filter(t => t.done).length} / ${list.length} 完成` }) : null
+        )
+      ));
+      if (!list.length) {
+        rows.push(h('tr', { class: 'empty-row' }, h('td', { colspan: 3, text: '這天還是空的' })));
+        continue;
+      }
+      for (const t of list) {
+        rows.push(h('tr', { class: 'task-row' + (t.done ? ' done' : '') + (t.id === justDoneId ? ' just' : '') },
+          h('td', null, h('span', { class: 'box', role: 'img', 'aria-label': t.done ? '已完成' : '未完成' })),
+          h('td', null,
+            t.title.trim()
+              ? h('span', { class: 't-title strike', text: t.title })
+              : h('span', { class: 'placeholder', text: '（未命名任務）' }),
+            t.origDate ? h('span', { class: 'roll-tag', text: `順延自 ${fmtShort(t.origDate)}` }) : null
+          ),
+          h('td', null, t.note.trim() ? h('span', { class: 'strike', text: t.note }) : h('span', { class: 'placeholder', text: '—' }))
+        ));
+      }
+    }
+    $('#pv-tasks').replaceChildren(...rows);
+  }
+
+  const prevLinkStatus = [];
+  function renderLinksPreview() {
+    let okCount = 0;
+    const items = state.links.map((l, i) => {
+      const a = analyzeLink(l);
+      const pop = a.status === 'ok' && prevLinkStatus[i] !== undefined && prevLinkStatus[i] !== 'ok';
+      prevLinkStatus[i] = a.status;
+      if (a.status === 'ok') {
+        okCount++;
+        return h('li', null, h('a', {
+          class: 'chip' + (pop ? ' pop' : ''), href: a.href, target: '_blank', rel: 'noopener noreferrer',
+          title: a.href
+        },
+          h('span', { class: 'chip-dot', style: `background:${DOT_COLORS[i % DOT_COLORS.length]}`, 'aria-hidden': 'true', text: Array.from(a.label)[0].toUpperCase() }),
+          h('span', { class: 'chip-text' },
+            h('span', { class: 'chip-title', text: a.label }),
+            h('span', { class: 'chip-host', text: a.untitled ? '未填標題' : a.host })
+          )
+        ));
+      }
+      if (a.status === 'incomplete') {
+        const label = l.title.trim() || '（未命名）';
+        return h('li', null, h('div', { class: 'chip incomplete', 'aria-disabled': 'true' },
+          h('span', { class: 'chip-dot', 'aria-hidden': 'true', text: l.title.trim() ? Array.from(l.title.trim())[0].toUpperCase() : '·' }),
+          h('span', { class: 'chip-text' },
+            h('span', { class: 'chip-title', text: label }),
+            h('span', { class: 'chip-host', text: `未完成：${a.reason}` })
+          )
+        ));
+      }
+      return h('li', null, h('div', { class: 'chip empty', text: '＋ 尚未設定' }));
+    });
+    $('#pv-links').replaceChildren(...items);
+    $('#pv-links-meta').textContent = `已設定 ${okCount} / ${LIMITS.links}`;
+  }
+
+  function renderPreview(opts = {}) {
+    $('#pv-date').textContent = fmtLong(todayKey());
+    renderStatus();
+    renderTasksPreview(opts.justDone);
+    renderLinksPreview();
+  }
+
+  /* ================= 右側：狀態 ================= */
+  function updateCounter(input, max, counterId, hintId) {
+    const n = input.value.length;
+    const c = document.getElementById(counterId);
+    if (c) { c.textContent = `${n} / ${max}`; c.classList.toggle('at-limit', n >= max); }
+    if (hintId) {
+      const hEl = document.getElementById(hintId);
+      if (hEl) hEl.textContent = n >= max ? `已達 ${max} 字上限` : '';
+    }
+  }
+
+  function bindProfile() {
+    $$('[data-profile]').forEach(el => {
+      const key = el.dataset.profile;
+      el.maxLength = LIMITS[key];
+      el.addEventListener('input', () => {
+        state.profile[key] = el.value.slice(0, LIMITS[key]);
+        updateCounter(el, LIMITS[key], 'c-' + key, 'h-' + key);
+        scheduleSave();
+        renderStatus();
+      });
+    });
+  }
+  function syncProfileInputs() {
+    $$('[data-profile]').forEach(el => {
+      const key = el.dataset.profile;
+      el.value = state.profile[key];
+      updateCounter(el, LIMITS[key], 'c-' + key, 'h-' + key);
+    });
+  }
+
+  /* ================= 右側：任務 ================= */
+  const addDate = $('#add-date'), addTitle = $('#add-title'), addNote = $('#add-note'), addHint = $('#add-hint');
+  const countOn = k => state.tasks.filter(t => t.date === k).length;
+
+  function renderAddDateOptions() {
+    const keys = weekKeys();
+    const prev = addDate.value;
+    addDate.replaceChildren(...keys.map((k, i) => {
+      const n = countOn(k);
+      const full = n >= LIMITS.perDay;
+      return h('option', { value: k }, `${fmtShort(k)}${i === 0 ? '（今天）' : ''}　${n} / ${LIMITS.perDay}${full ? '　已滿' : ''}`);
+    }));
+    addDate.value = keys.includes(prev) ? prev : keys[0];
+  }
+
+  function addTask() {
+    const title = addTitle.value.trim();
+    const note = addNote.value.trim();
+    const date = addDate.value;
+    if (!title) {
+      addHint.textContent = '請輸入任務名稱';
+      addTitle.classList.add('invalid');
+      addTitle.focus();
+      return;
+    }
+    if (countOn(date) >= LIMITS.perDay) {
+      addHint.textContent = `${fmtShort(date)} 已有 ${LIMITS.perDay} 項任務，請改選其他日期`;
+      addDate.classList.add('invalid');
+      addDate.focus();
+      return;
+    }
+    const task = { id: uid(), date, done: false, title: title.slice(0, LIMITS.taskTitle), note: note.slice(0, LIMITS.taskNote) };
+    state.tasks.push(task);
+    addTitle.value = ''; addNote.value = '';
+    addHint.textContent = '';
+    addTitle.classList.remove('invalid'); addDate.classList.remove('invalid');
+    updateCounter(addTitle, LIMITS.taskTitle, 'c-add-title');
+    updateCounter(addNote, LIMITS.taskNote, 'c-add-note');
+    commit({ structure: true, flashId: task.id });
+    addTitle.focus();
+  }
+
+  function taskRow(t, keys) {
+    const meta = h('div', { class: 'm' });
+    const errEl = h('span', { class: 'row-err' });
+    if (t.origDate) meta.append(h('span', { class: 'roll-note', text: `順延自 ${fmtShort(t.origDate)}` }));
+    meta.append(errEl);
+    const setErr = msg => { errEl.textContent = msg; meta.style.display = meta.textContent ? '' : 'none'; };
+
+    const chk = h('input', { type: 'checkbox', class: 'chk c', 'aria-label': `完成：${t.title || '未命名任務'}`, checked: t.done });
+    const title = h('input', { type: 'text', class: 't', value: t.title, maxlength: LIMITS.taskTitle, placeholder: '任務名稱', 'aria-label': '任務名稱', autocomplete: 'off' });
+    const note = h('input', { type: 'text', class: 'n', value: t.note, maxlength: LIMITS.taskNote, placeholder: '備註', 'aria-label': '備註', autocomplete: 'off' });
+    const sel = h('select', { class: 'd', 'aria-label': '移到其他日期' }, keys.map(k => h('option', { value: k, text: fmtShort(k) })));
+    sel.value = t.date;
+    const del = h('button', { type: 'button', class: 'btn btn-sm x', text: '刪除', 'aria-label': `刪除：${t.title || '未命名任務'}` });
+    const row = h('div', { class: 'trow' + (t.done ? ' is-done' : ''), dataset: { id: t.id } }, chk, title, note, sel, del, meta);
+
+    if (!t.title.trim()) { title.classList.add('invalid'); setErr('任務名稱不可空白'); }
+    else setErr('');
+
+    chk.addEventListener('change', () => {
+      t.done = chk.checked;
+      row.classList.toggle('is-done', t.done);
+      commit({ justDone: t.done ? t.id : null });
+    });
+    title.addEventListener('input', () => {
+      t.title = title.value.slice(0, LIMITS.taskTitle);
+      const empty = !t.title.trim();
+      title.classList.toggle('invalid', empty);
+      setErr(empty ? '任務名稱不可空白' : '');
+      scheduleSave();
+      renderTasksPreview();
+    });
+    note.addEventListener('input', () => {
+      t.note = note.value.slice(0, LIMITS.taskNote);
+      scheduleSave();
+      renderTasksPreview();
+    });
+    sel.addEventListener('change', () => {
+      const to = sel.value;
+      if (countOn(to) >= LIMITS.perDay) {
+        sel.value = t.date;
+        setErr(`${fmtShort(to)} 已滿 ${LIMITS.perDay} 項，無法移入`);
+        return;
+      }
+      t.date = to;
+      commit({ structure: true, flashId: t.id });
+    });
+    del.addEventListener('click', () => {
+      const idx = state.tasks.indexOf(t);
+      if (idx < 0) return;
+      state.tasks.splice(idx, 1);
+      commit({ structure: true });
+      toast(`已刪除「${t.title.trim() || '未命名任務'}」`, {
+        label: '復原',
+        fn: () => {
+          if (state.tasks.includes(t)) return;
+          state.tasks.splice(Math.min(idx, state.tasks.length), 0, t);
+          commit({ structure: true, flashId: t.id });
+        }
+      });
+    });
+    return row;
+  }
+
+  function renderTaskEditor(flashId) {
+    const keys = weekKeys();
+    const today = keys[0];
+    $('#ed-tasks').replaceChildren(...keys.map(k => {
+      const list = state.tasks.filter(t => t.date === k);
+      return h('section', { class: 'eday' },
+        h('h4', { class: 'eday-head' },
+          fmtShort(k),
+          k === today ? h('span', { class: 'today', text: '今天' }) : null,
+          h('span', { class: 'eday-count' + (list.length >= LIMITS.perDay ? ' full' : ''), text: `${list.length} / ${LIMITS.perDay}` })
+        ),
+        list.length ? list.map(t => taskRow(t, keys)) : h('p', { class: 'eday-empty', text: '這天還是空的' })
+      );
+    }));
+    if (flashId) {
+      const row = $(`.trow[data-id="${CSS.escape(flashId)}"]`);
+      if (row) { row.classList.add('flash'); row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    }
+  }
+
+  /* ================= 右側：目錄 ================= */
+  const linkRows = [];
+  function buildLinkEditor() {
+    const wrap = $('#ed-links');
+    for (let i = 0; i < LIMITS.links; i++) {
+      const title = h('input', { type: 'text', class: 't', maxlength: LIMITS.linkTitle, placeholder: '標題', 'aria-label': `第 ${i + 1} 格標題`, autocomplete: 'off' });
+      const url = h('input', { type: 'text', class: 'u', inputmode: 'url', maxlength: LIMITS.linkUrl, placeholder: '網址，例如 example.com', 'aria-label': `第 ${i + 1} 格網址`, autocomplete: 'off', spellcheck: 'false' });
+      const clear = h('button', { type: 'button', class: 'btn btn-sm x', text: '清除', 'aria-label': `清除第 ${i + 1} 格` });
+      const msg = h('div', { class: 'm', 'aria-live': 'polite' });
+      const row = h('div', { class: 'lrow' }, h('span', { class: 'i', text: String(i + 1).padStart(2, '0') }), title, url, clear, msg);
+      const ref = { row, title, url, clear, msg, touched: false };
+      linkRows.push(ref);
+
+      const onInput = () => {
+        state.links[i] = { title: title.value.slice(0, LIMITS.linkTitle), url: url.value.slice(0, LIMITS.linkUrl) };
+        updateLinkRow(i);
+        scheduleSave();
+        renderLinksPreview();
+      };
+      title.addEventListener('input', onInput);
+      url.addEventListener('input', onInput);
+      // 離開這一列才開始顯示錯誤，避免輸入到一半就變紅
+      row.addEventListener('focusout', e => {
+        if (!row.contains(e.relatedTarget)) { ref.touched = true; updateLinkRow(i); }
+      });
+      clear.addEventListener('click', () => {
+        title.value = ''; url.value = '';
+        ref.touched = false;
+        onInput();
+        title.focus();
+      });
+      wrap.append(row);
+    }
+  }
+  function updateLinkRow(i) {
+    const ref = linkRows[i];
+    const a = analyzeLink(state.links[i]);
+    const showErr = a.status === 'incomplete' && ref.touched;
+    ref.url.classList.toggle('invalid', showErr);
+    ref.msg.replaceChildren();
+    if (showErr) ref.msg.append(h('p', { class: 'hint', text: a.reason }));
+    else if (a.status === 'ok' && a.prefixed) ref.msg.append(h('p', { class: 'note', text: `將開啟：${a.href}` }));
+    else if (a.status === 'ok' && a.untitled) ref.msg.append(h('p', { class: 'note', text: '未填標題，左側會以網域名稱顯示' }));
+    ref.clear.disabled = a.status === 'empty';
+  }
+  function syncLinkEditor() {
+    linkRows.forEach((ref, i) => {
+      ref.title.value = state.links[i].title;
+      ref.url.value = state.links[i].url;
+      ref.touched = true;
+      updateLinkRow(i);
+    });
+  }
+
+  /* ================= 寫入流程 ================= */
+  function commit(opts = {}) {
+    scheduleSave();
+    renderPreview(opts);
+    if (opts.structure) {
+      renderAddDateOptions();
+      renderTaskEditor(opts.flashId);
+    }
+  }
+
+  function replaceState(next, message) {
+    state = next;
+    const r = rollover(state);
+    syncProfileInputs();
+    renderAddDateOptions();
+    renderTaskEditor();
+    syncLinkEditor();
+    renderPreview();
+    saveNow();
+    if (message) toast(r.moved ? `${message}，另有 ${r.moved} 項過期任務已順延到今天` : message);
+  }
+
+  /* ================= 備份 ================= */
+  let pendingImport = null;
+  $('#export-btn').addEventListener('click', () => {
+    const payload = { app: 'my-daily-dashboard', version: 1, exportedAt: new Date().toISOString(), data: state };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: `daily-dashboard-${todayKey()}.json` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('已匯出 JSON 備份');
+  });
+
+  const importFile = $('#import-file'), importHint = $('#import-hint'), importPreview = $('#import-preview');
+  $('#import-btn').addEventListener('click', () => importFile.click());
+  importFile.addEventListener('change', () => {
+    const file = importFile.files && importFile.files[0];
+    importFile.value = '';
+    importHint.textContent = '';
+    importPreview.hidden = true;
+    pendingImport = null;
+    if (!file) return;
+    if (file.size > 1024 * 1024) { importHint.textContent = '檔案超過 1 MB，看起來不是本網站的備份檔'; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = sanitize(JSON.parse(String(reader.result)));
+        pendingImport = parsed;
+        const linkCount = parsed.links.filter(l => analyzeLink(l).status !== 'empty').length;
+        $('#import-summary').textContent =
+          `「${file.name}」包含：名字「${parsed.profile.name || '未填'}」、${parsed.tasks.length} 項任務、${linkCount} 個目錄連結。確認後會覆蓋目前所有內容。`;
+        importPreview.hidden = false;
+        $('#import-confirm').focus();
+      } catch (err) {
+        importHint.textContent = `無法匯入：${err instanceof SyntaxError ? '不是有效的 JSON 檔' : err.message}`;
+      }
+    };
+    reader.onerror = () => { importHint.textContent = '讀取檔案失敗，請再試一次'; };
+    reader.readAsText(file);
+  });
+  $('#import-confirm').addEventListener('click', () => {
+    if (!pendingImport) return;
+    replaceState(pendingImport, '已匯入備份');
+    pendingImport = null;
+    importPreview.hidden = true;
+  });
+  $('#import-cancel').addEventListener('click', () => { pendingImport = null; importPreview.hidden = true; });
+
+  function armConfirm(btn, armedLabel, action) {
+    const label = btn.textContent;
+    let timer = null;
+    const disarm = () => { delete btn.dataset.armed; btn.textContent = label; };
+    btn.addEventListener('click', () => {
+      if (btn.dataset.armed) { clearTimeout(timer); disarm(); action(); return; }
+      btn.dataset.armed = '1';
+      btn.textContent = armedLabel;
+      timer = setTimeout(disarm, 4000);
+    });
+    btn.addEventListener('blur', () => { clearTimeout(timer); disarm(); });
+  }
+  armConfirm($('#reset-empty'), '確定清空？再按一次', () => replaceState(emptyState(), '已清空全部資料'));
+  armConfirm($('#reset-sample'), '會覆蓋目前內容，再按一次', () => replaceState(sampleState(), '已載入範例資料'));
+
+  /* ================= 分頁籤 ================= */
+  const tabs = $$('[role="tab"]');
+  function selectTab(name, focus) {
+    tabs.forEach(t => {
+      const on = t.dataset.tab === name;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById('panel-' + t.dataset.tab).hidden = !on;
+      if (on && focus) t.focus();
+    });
+    ui.tab = name; saveUI();
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => selectTab(t.dataset.tab));
+    t.addEventListener('keydown', e => {
+      let j = null;
+      if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') j = 0;
+      else if (e.key === 'End') j = tabs.length - 1;
+      if (j !== null) { e.preventDefault(); selectTab(tabs[j].dataset.tab, true); }
+    });
+  });
+
+  /* ================= 手機切換 ================= */
+  const mq = window.matchMedia('(max-width: 899px)');
+  function setView(v, scroll) {
+    ui.view = v; saveUI();
+    document.body.dataset.view = v;
+    $$('[data-view-btn]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.viewBtn === v)));
+    if (scroll && mq.matches) window.scrollTo({ top: 0 });
+  }
+  $$('[data-view-btn]').forEach(b => b.addEventListener('click', () => setView(b.dataset.viewBtn, true)));
+
+  // 左側卡片的「編輯」：跳到對應分頁（手機版會一併切到編輯畫面）
+  $$('[data-jump]').forEach(b => b.addEventListener('click', () => {
+    selectTab(b.dataset.jump);
+    if (mq.matches) setView('edit', true);
+    const first = $(`#panel-${b.dataset.jump} input, #panel-${b.dataset.jump} textarea, #panel-${b.dataset.jump} select`);
+    if (first) first.focus({ preventScroll: false });
+  }));
+
+  /* ================= 可拖曳分隔線 ================= */
+  const app = $('#app'), divider = $('#divider');
+  function setLeft(p, persist) {
+    p = Math.min(75, Math.max(30, p));
+    ui.left = Math.round(p * 10) / 10;
+    app.style.setProperty('--left-width', ui.left + '%');
+    divider.setAttribute('aria-valuenow', String(Math.round(ui.left)));
+    divider.setAttribute('aria-valuetext', `左側 ${Math.round(ui.left)}%`);
+    if (persist) saveUI();
+  }
+  divider.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    divider.setPointerCapture(e.pointerId);
+    document.body.classList.add('dragging');
+    const rect = app.getBoundingClientRect();
+    const move = ev => setLeft((ev.clientX - rect.left) / rect.width * 100);
+    const up = () => {
+      divider.removeEventListener('pointermove', move);
+      divider.removeEventListener('pointerup', up);
+      divider.removeEventListener('pointercancel', up);
+      document.body.classList.remove('dragging');
+      saveUI();
+    };
+    divider.addEventListener('pointermove', move);
+    divider.addEventListener('pointerup', up);
+    divider.addEventListener('pointercancel', up);
+  });
+  divider.addEventListener('dblclick', () => setLeft(55, true));
+  divider.addEventListener('keydown', e => {
+    const step = e.shiftKey ? 10 : 2;
+    if (e.key === 'ArrowLeft') setLeft(ui.left - step, true);
+    else if (e.key === 'ArrowRight') setLeft(ui.left + step, true);
+    else if (e.key === 'Home') setLeft(30, true);
+    else if (e.key === 'End') setLeft(75, true);
+    else if (e.key === 'Enter') setLeft(55, true);
+    else return;
+    e.preventDefault();
+  });
+
+  /* ================= 跨日與跨分頁 ================= */
+  let currentDay = todayKey();
+  function checkDay() {
+    const k = todayKey();
+    if (k === currentDay) return;
+    currentDay = k;
+    const r = rollover(state);
+    renderAddDateOptions();
+    renderTaskEditor();
+    renderPreview();
+    scheduleSave();
+    if (r.moved) toast(`已經換日，${r.moved} 項未完成的任務順延到今天`);
+  }
+  setInterval(checkDay, 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDay(); });
+
+  window.addEventListener('storage', e => {
+    if (e.key !== STORAGE_KEY || e.newValue === null) return;
+    try {
+      state = sanitize(JSON.parse(e.newValue));
+      rollover(state);
+      syncProfileInputs();
+      renderAddDateOptions();
+      renderTaskEditor();
+      syncLinkEditor();
+      renderPreview();
+      toast('已同步另一個分頁的修改');
+    } catch { /* 忽略無效資料 */ }
+  });
+
+  window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
+
+  /* ================= 啟動 ================= */
+  const loaded = loadState();
+  state = loaded.state;
+  const rolled = rollover(state);
+  loadUI();
+
+  setLeft(ui.left);
+  setView(ui.view);
+  selectTab(ui.tab);
+  bindProfile();
+  syncProfileInputs();
+  updateCounter(addTitle, LIMITS.taskTitle, 'c-add-title');
+  updateCounter(addNote, LIMITS.taskNote, 'c-add-note');
+  addTitle.maxLength = LIMITS.taskTitle;
+  addNote.maxLength = LIMITS.taskNote;
+  renderAddDateOptions();
+  renderTaskEditor();
+  buildLinkEditor();
+  syncLinkEditor();
+  renderPreview();
+  updateStorageStatus();
+
+  addTitle.addEventListener('input', () => {
+    updateCounter(addTitle, LIMITS.taskTitle, 'c-add-title');
+    if (addTitle.value.trim()) { addTitle.classList.remove('invalid'); addHint.textContent = ''; }
+  });
+  addNote.addEventListener('input', () => updateCounter(addNote, LIMITS.taskNote, 'c-add-note'));
+  addDate.addEventListener('change', () => { addDate.classList.remove('invalid'); addHint.textContent = ''; });
+  [addTitle, addNote].forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); addTask(); }
+  }));
+  $('#add-btn').addEventListener('click', addTask);
+
+  if (storageOK && (loaded.fresh || rolled.moved || rolled.cleared)) saveNow();
+  else if (!storageOK) setSaveState('error');
+  else { saveEl.textContent = '已載入'; saveEl.classList.add('ok'); }
+
+  if (loaded.notice) toast(loaded.notice);
+  else if (rolled.moved) toast(`有 ${rolled.moved} 項過期未完成的任務已順延到今天`);
+})();
+</script>
+</body>
+</html>
